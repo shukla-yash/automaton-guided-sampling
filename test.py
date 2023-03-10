@@ -100,16 +100,6 @@ def test():
 
             if terminated or truncated:
                 break
-            # if render:
-            #     env.render()
-            #     time.sleep(frame_delay)
-            #     time.sleep(0.2)
-
-            # if done:
-            #     done_arr.append(1)
-            #     break
-            # elif t > 100:
-            #     done_arr.append(0)
 
         # clear buffer
         ppo_agent.buffer.clear()
