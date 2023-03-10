@@ -7,3 +7,6 @@ To train: ```python train.py```. Policies saved to ```PPO_preTrained```
 To test: ```python test.py```. Loads policies from ```PPO_preTrained```
 
 Currently, ```PPO_preTrained``` contains successfully trained policies for ```MiniGrid-NineRoomsEasyKey-v0``` and ```MiniGrid-NineRoomsHardKey-v0```
+
+
+```Ninerooms``` environments for minigrid can be found at: ```https://github.com/shukla-yash/minigrid-updated```
