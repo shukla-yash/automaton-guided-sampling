@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+PPO_logs/
 
 # C extensions
 *.so
