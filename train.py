@@ -135,6 +135,8 @@ def train(params):
     dfa_instance = DFA()
     global_timestep = 0
     environment_total_timestep = [0 for i in range(env_num)]
+    environment_total_episode = [0 for i in range(env_num)]
+
     is_final_task = 0
     final_task_performance_timesteps = []
     final_task_performance_reward = []
@@ -201,9 +203,6 @@ def train(params):
                     print_running_reward = 0
                     print_running_episodes = 0
 
-                    if print_avg_reward > 0.92:
-                        break
-
                 # save model weights
                 if timesteps_in_current_iter % save_model_freq == 0:
                     print("--------------------------------------------------------------------------------------------")
@@ -234,6 +233,7 @@ def train(params):
                 break
             episodes_in_current_iter += 1
             environment_total_timestep[current_task] += timesteps_in_current_iter
+            environment_total_episode[current_task] += 1
             print_running_reward += current_ep_reward
             print_running_episodes += 1
 
@@ -257,6 +257,9 @@ def train(params):
     experiment_file_name_sunk_timesteps = 'randomseed_' + str(random_seed) + '_sunk_timesteps'
     path_to_save_sunk_timesteps = log_dir + os.sep + experiment_file_name_sunk_timesteps + '.npz'
 
+    experiment_file_name_sunk_episodes = 'randomseed_' + str(random_seed) + '_sunk_episodes'
+    path_to_save_sunk_episodes = log_dir + os.sep + experiment_file_name_sunk_episodes + '.npz'
+
     experiment_file_name_final_reward = 'randomseed_' + str(random_seed) + '_final_reward'
     path_to_save_final_reward = log_dir + os.sep + experiment_file_name_final_reward + '.npz'
 
@@ -267,9 +270,16 @@ def train(params):
     path_to_save_final_timesteps = log_dir + os.sep + experiment_file_name_final_timesteps + '.npz'
 
     np.savez_compressed(path_to_save_sunk_timesteps, sunk_timesteps = environment_total_timestep)
+    np.savez_compressed(path_to_save_sunk_episodes, sunk_episodes = environment_total_episode)    
     np.savez_compressed(path_to_save_final_reward, final_reward = final_task_performance_reward)
     np.savez_compressed(path_to_save_final_dones, final_dones = final_task_performance_done)
     np.savez_compressed(path_to_save_final_timesteps, final_timesteps = final_task_performance_timesteps)
+
+    print("Sunk timesteps: ", environment_total_timestep)
+    print("Sunk episodes: ", environment_total_episode)
+    print("final episodes: ", len(final_task_performance_timesteps))
+
+
 
 if __name__ == '__main__':
 
