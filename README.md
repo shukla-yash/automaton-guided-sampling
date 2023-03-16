@@ -2,7 +2,7 @@
 Automaton guided task sampling for RL agents
 
 
-To train: ```python train.py```. Policies saved to ```PPO_preTrained```
+To train: ```python main.py```. Policies saved to ```PPO_preTrained```
 
 To test: ```python test.py```. Loads policies from ```PPO_preTrained```
 
