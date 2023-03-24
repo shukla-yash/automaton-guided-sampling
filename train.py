@@ -198,7 +198,8 @@ def train(params):
                     print_avg_reward = print_running_reward / print_running_episodes
                     print_avg_reward = round(print_avg_reward, 2)
 
-                    print("Episode : {} \t\t Timestep : {} \t\t Average Reward : {}".format(episodes_in_current_iter, environment_total_timestep[current_task]+timesteps_in_current_iter, print_avg_reward))
+                    print("Environment: {} \t\t Episode : {} \t\t Timestep : {} \t\t Average Reward : {}".format(current_task, episodes_in_current_iter, environment_total_timestep[current_task]+timesteps_in_current_iter, print_avg_reward))
+                    print("Q-Values : {}".format(dfa_instance.qvalue.teacher_q_values))
 
                     print_running_reward = 0
                     print_running_episodes = 0
@@ -206,8 +207,8 @@ def train(params):
                 # save model weights
                 if timesteps_in_current_iter % save_model_freq == 0:
                     print("--------------------------------------------------------------------------------------------")
-                    print("saving model at : " + checkpoint_path)
-                    ppo_agent.save(checkpoint_path)
+                    print("saving model at : " + checkpoint_path_list[current_task])
+                    ppo_agent.save(checkpoint_path_list[current_task])
                     print("model saved")
                     print("Elapsed Time  : ", datetime.now().replace(microsecond=0) - start_time)
                     print("--------------------------------------------------------------------------------------------")
@@ -226,7 +227,7 @@ def train(params):
                     reward_arr.append(current_ep_reward)
             
 
-            if np.mean(done_arr[-50:]) > 0.95:
+            if np.mean(reward_arr[-50:]) > 0.9:
                 print("saving converged model at : " + checkpoint_path_list[current_task])
                 ppo_agent.save(checkpoint_path_list[current_task])
                 is_final_task = dfa_instance.learned_task(current_task)

@@ -20,7 +20,7 @@ class DFA:
         # print("edges: ", self.edges)
         # print("task  to remove: ", task)
         self.active_tasks.remove(task)
-        self.qvalue.teacher_q_values[task] = -1
+        self.qvalue.teacher_q_values[task] = -np.inf
         self.learned_tasks.append(task)
         src, dst = self.edges[task][0], self.edges[task][1]
         active_task_dst = dst
@@ -39,20 +39,39 @@ class DFA:
                         nodes_to_check.append(value[0])
             for item in edges_to_discard:
                 self.edges.pop(item)
-                self.qvalue.teacher_q_values[item] = -1
+                self.qvalue.teacher_q_values[item] = -np.inf
                 if item in self.active_tasks:
                     self.active_tasks.remove(item)
                 # print("edges after discard:", self.edges)
             if len(nodes_to_check) == 0:
                 break
             else:
-                dst = nodes_to_check.pop()
-                # print("checking: ", dst)
-                continue
+                while True:
+                    empty_nodes_to_check = 0
+                    should_not_be_discarded = 0
+                    if len(nodes_to_check) > 0:
+                        dst = nodes_to_check.pop()
+                    else:
+                        empty_nodes_to_check = 1
+                        break
+                    for key,value in self.edges.items():
+                        if dst == value[0]:
+                            should_not_be_discarded = 1
+                            break
+                    if should_not_be_discarded == 1:
+                        continue
+                    else:
+                        break
+                if empty_nodes_to_check == 1:
+                    break
+                # continue
+            # if len(nodes_to_check) == 0:
+            #     break
 
         for key,value in self.edges.items():
             if value[0] == active_task_dst:
                 self.active_tasks.append(key)
+                self.qvalue.teacher_q_values[key] = 0
                 # print("active tasks 2: ", self.active_tasks)
 
         return 0
@@ -63,23 +82,27 @@ class DFA:
             old_reward = 0
         self.student_rewards[env_num].append(reward)
         if self.strategy == "q-value":
+            print("Current reward: {}, Prev reward : {}".format(reward, old_reward))
             reward = reward - old_reward
             self.qvalue.update_teacher_q_table(env_num,reward)
     def choose_task(self):
         if self.strategy == "q-value":
             task = self.qvalue.choose_task(self.active_tasks)
+            print("Q value:" , self.qvalue.teacher_q_values)
         return task
 
 
 
 class QValue:
-    def __init__(self, num_envs, active_tasks, teacher_learning_rate = 0.1, exploration = 0.1):
+    def __init__(self, num_envs, active_tasks, teacher_learning_rate = 0.1, exploration = 0.3):
         self.num_envs = num_envs
         self.active_tasks = active_tasks
         self.exploration = exploration
         self.teacher_q_values = []
         for i in range(num_envs):
-            self.teacher_q_values.append(0)
+            self.teacher_q_values.append(-np.inf)
+        for i in active_tasks:
+            self.teacher_q_values[i] = 0
         self.teacher_learning_rate = teacher_learning_rate
     def update_teacher_q_table(self, env_num, teacher_reward):
         self.teacher_q_values[env_num] = self.teacher_learning_rate*teacher_reward + (1-self.teacher_learning_rate)*self.teacher_q_values[env_num]
@@ -87,7 +110,11 @@ class QValue:
         if np.random.uniform() < self.exploration:
             task_number = np.random.choice(active_tasks)
         else:
-            task_number = np.argmax(self.teacher_q_values) 
+            task_number = np.argmax(self.teacher_q_values)
+        if task_number not in active_tasks:
+            print("task number {} not in active tasks {}".format(task_number,active_tasks))
+            print("q values {}".format(self.teacher_q_values))
+            print(stop) 
         return task_number
 
 if __name__ == '__main__':
