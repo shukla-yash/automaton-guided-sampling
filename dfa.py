@@ -1,4 +1,5 @@
 import numpy as np
+import copy
 
 class DFA:
     def __init__(self, strategy = "q-value"):
@@ -13,6 +14,8 @@ class DFA:
         self.student_rewards = {enum : [] for enum in range(self.num_envs)}
         if self.strategy == "q-value":
             self.qvalue = QValue(self.num_envs, self.active_tasks)
+        elif self.strategy == "ucb":
+            self.qvalue = UCB(self.num_envs, self.active_tasks)
     def learned_task(self, task):
         if task == self.goal_task:
             # print("Learned goal task")
@@ -116,6 +119,36 @@ class QValue:
             print("q values {}".format(self.teacher_q_values))
             print(stop) 
         return task_number
+    
+class UCB:
+    def __init__(self, num_envs, active_tasks, ucb_confidence_rate = 1.4, exploration =0.3):
+        self.num_envs = num_envs
+        self.active_tasks = active_tasks
+        self.exploration = exploration
+        self.teacher_q_values = []
+        for i in range(num_envs):
+            self.teacher_q_values.append(-np.inf)
+        for i in active_tasks:
+            self.teacher_q_values[i] = 0
+        self.ucb_confidence_rate = ucb_confidence_rate
+        self.total_times_arms_pulled = 0
+        self.each_arm_count = [0 for i in range(num_envs)]
+    def update_teacher_q_table(self, env_num, teacher_reward):
+        self.teacher_q_values[env_num] = self.ucb_confidence_rate*teacher_reward + (1-self.ucb_confidence_rate)*self.teacher_q_values[env_num]
+    def choose_task(self, active_tasks):
+        self.total_times_arms_pulled += 1 
+        bonus = [0 for i in range(self.num_envs)]
+        ucb_values = copy.deepcopy(self.teacher_q_values)
+        for i in range(self.num_envs):
+            bonus[i] += self.ucb_confidence_rate*np.sqrt(np.log(self.total_times_arms_pulled)/self.each_arm_count[i]+1)
+            ucb_values[i] += bonus[i]        
+        task_number = np.argmax(ucb_values)
+        if task_number not in active_tasks:
+            print("task number {} not in active tasks {}".format(task_number,active_tasks))
+            print("q values {}".format(self.teacher_q_values))
+            print(stop) 
+        self.each_arm_count[task_number] += 1
+        return task_number    
 
 if __name__ == '__main__':
 
