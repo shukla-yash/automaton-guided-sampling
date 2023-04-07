@@ -2,7 +2,7 @@ training:
   num_envs : 5
   envs : ["MiniGrid-NineRoomsEasyKey-v0", "MiniGrid-NineRoomsHardKey-v0", "MiniGrid-NineRoomsKeyEasyDoor-v0", "MiniGrid-NineRoomsKeyHardDoor-v0", "MiniGrid-NineRoomsDoorGoal-v0"]
   strategy: q-value # q-value|thompson|entropy
-  episodes_in_each_iter : 200
+  episodes_in_each_iter : 500
 
 env:
   render_mode : False
@@ -21,7 +21,7 @@ env:
 
 ################ PPO hyperparameters ################
 ppo:
-  update_timestep : 3000      # update policy every n timesteps
+  update_episode : 4      # update policy every n timesteps
   K_epochs : 15               # update policy for K epochs in one PPO update
   eps_clip : 0.2          # clip parameter for PPO
   gamma : 0.99            # discount factor

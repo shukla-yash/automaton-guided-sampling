@@ -7,6 +7,8 @@ class DFA:
         self.strategy = strategy
         self.envs = ["MiniGrid-NineRoomsEasyKey-v0", "MiniGrid-NineRoomsHardKey-v0", "MiniGrid-NineRoomsKeyEasyDoor-v0", "MiniGrid-NineRoomsKeyHardDoor-v0", "MiniGrid-NineRoomsDoorGoal-v0"]
         self.active_tasks = [0,1]
+        # self.active_tasks = [1]
+
         self.edges = {0:[0,1],1:[0,2],2:[1,3],3:[2,3],4:[3,4]} #Edge:{source node, dst node}
         self.learned_tasks = []
         self.discarded_tasks = []
@@ -16,9 +18,15 @@ class DFA:
             self.qvalue = QValue(self.num_envs, self.active_tasks)
         elif self.strategy == "ucb":
             self.qvalue = UCB(self.num_envs, self.active_tasks)
+        elif self.strategy == "q-value-rl":
+            self.qvalue = QValRL(self.num_envs, self.active_tasks)            
+        elif self.strategy == "ts":
+            self.qvalue = TS(self.num_envs, self.active_tasks)  
     def learned_task(self, task):
         if task == self.goal_task:
             # print("Learned goal task")
+            print("Learned tasks:",self.learned_tasks)
+            print("Discarded tasks:",self.discarded_tasks)
             return 1
         # print("edges: ", self.edges)
         # print("task  to remove: ", task)
@@ -77,6 +85,8 @@ class DFA:
                 self.qvalue.teacher_q_values[key] = 0
                 # print("active tasks 2: ", self.active_tasks)
 
+        if self.strategy == "ts":
+            self.qvalue.update_thompson_array(task, self.active_tasks)
         return 0
     def update_teacher(self, env_num, reward):
         if len(self.student_rewards[env_num]) > 0:
@@ -88,16 +98,31 @@ class DFA:
             print("Current reward: {}, Prev reward : {}".format(reward, old_reward))
             reward = reward - old_reward
             self.qvalue.update_teacher_q_table(env_num,reward)
+        elif self.strategy == "ucb":
+            self.qvalue.update_teacher_q_table(env_num,reward)
+        elif self.strategy == "q-value-rl":
+            self.qvalue.update_teacher_q_table(env_num,reward)            
+        elif self.strategy == "ts":
+            self.qvalue.update_teacher_q_table(env_num,reward)                        
     def choose_task(self):
         if self.strategy == "q-value":
             task = self.qvalue.choose_task(self.active_tasks)
             print("Q value:" , self.qvalue.teacher_q_values)
+        elif self.strategy == "ucb":
+            task = self.qvalue.choose_task(self.active_tasks)
+            print("Q value:" , self.qvalue.teacher_q_values)            
+        elif self.strategy == "q-value-rl":
+            task = self.qvalue.choose_task(self.active_tasks)
+            print("Q value:" , self.qvalue.teacher_q_values)                        
+        elif self.strategy == "ts":
+            task = self.qvalue.choose_task(self.active_tasks)
+            print("Q value:" , self.qvalue.teacher_q_values)                                    
         return task
 
 
 
 class QValue:
-    def __init__(self, num_envs, active_tasks, teacher_learning_rate = 0.1, exploration = 0.3):
+    def __init__(self, num_envs, active_tasks, teacher_learning_rate = 0.1, exploration = 0.1):
         self.num_envs = num_envs
         self.active_tasks = active_tasks
         self.exploration = exploration
@@ -113,15 +138,44 @@ class QValue:
         if np.random.uniform() < self.exploration:
             task_number = np.random.choice(active_tasks)
         else:
-            task_number = np.argmax(self.teacher_q_values)
+            maxIndices = [i for i in range(len(self.teacher_q_values)) if self.teacher_q_values[i] == np.asarray(self.teacher_q_values).max()]
+            task_number = np.random.choice(maxIndices)
         if task_number not in active_tasks:
             print("task number {} not in active tasks {}".format(task_number,active_tasks))
             print("q values {}".format(self.teacher_q_values))
             print(stop) 
         return task_number
     
+class QValRL:
+    def __init__(self, num_envs, active_tasks, exploration = 0.2):
+        self.num_envs = num_envs
+        self.active_tasks = active_tasks
+        self.exploration = exploration
+        self.teacher_q_values = []
+        for i in range(num_envs):
+            self.teacher_q_values.append(-np.inf)
+        for i in active_tasks:
+            self.teacher_q_values[i] = 0
+        self.total_times_arms_pulled = 0
+        self.each_arm_count = [0 for i in range(num_envs)]        
+    def update_teacher_q_table(self, env_num, teacher_reward):
+        self.teacher_q_values[env_num] = self.teacher_q_values[env_num] + (1/(self.each_arm_count[env_num]+1))*(teacher_reward - self.teacher_q_values[env_num])
+    def choose_task(self, active_tasks):
+        if np.random.uniform() < self.exploration:
+            task_number = np.random.choice(active_tasks)
+        else:
+            maxIndices = [i for i in range(len(self.teacher_q_values)) if self.teacher_q_values[i] == np.asarray(self.teacher_q_values).max()]
+            task_number = np.random.choice(maxIndices)
+        if task_number not in active_tasks:
+            print("task number {} not in active tasks {}".format(task_number,active_tasks))
+            print("q values {}".format(self.teacher_q_values))
+            print(stop) 
+        self.total_times_arms_pulled += 1
+        self.each_arm_count[task_number] += 1
+        return task_number    
+    
 class UCB:
-    def __init__(self, num_envs, active_tasks, ucb_confidence_rate = 1.4, exploration =0.3):
+    def __init__(self, num_envs, active_tasks, ucb_confidence_rate = 1.4, exploration =0.3, alpha=0.1):
         self.num_envs = num_envs
         self.active_tasks = active_tasks
         self.exploration = exploration
@@ -133,22 +187,71 @@ class UCB:
         self.ucb_confidence_rate = ucb_confidence_rate
         self.total_times_arms_pulled = 0
         self.each_arm_count = [0 for i in range(num_envs)]
+        self.alpha = alpha
     def update_teacher_q_table(self, env_num, teacher_reward):
-        self.teacher_q_values[env_num] = self.ucb_confidence_rate*teacher_reward + (1-self.ucb_confidence_rate)*self.teacher_q_values[env_num]
+        self.teacher_q_values[env_num] = self.teacher_q_values[env_num] + self.alpha*(teacher_reward-self.teacher_q_values[env_num])
     def choose_task(self, active_tasks):
         self.total_times_arms_pulled += 1 
         bonus = [0 for i in range(self.num_envs)]
         ucb_values = copy.deepcopy(self.teacher_q_values)
         for i in range(self.num_envs):
-            bonus[i] += self.ucb_confidence_rate*np.sqrt(np.log(self.total_times_arms_pulled)/self.each_arm_count[i]+1)
+            bonus[i] += self.ucb_confidence_rate*np.sqrt(np.log(self.total_times_arms_pulled)/(self.each_arm_count[i]+1))
             ucb_values[i] += bonus[i]        
-        task_number = np.argmax(ucb_values)
+        maxIndices = [i for i in range(len(ucb_values)) if ucb_values[i] == np.asarray(ucb_values).max()]
+        task_number = np.random.choice(maxIndices)            
         if task_number not in active_tasks:
             print("task number {} not in active tasks {}".format(task_number,active_tasks))
             print("q values {}".format(self.teacher_q_values))
             print(stop) 
         self.each_arm_count[task_number] += 1
         return task_number    
+
+
+class TS:
+    def __init__(self, num_envs, active_tasks, exploration =0.3):
+        self.num_envs = num_envs
+        self.active_tasks = active_tasks
+        self.exploration = exploration
+        self.teacher_q_values = []
+        self.thompson_arrays = [[] for _ in range(num_envs)]
+        for i in range(num_envs):
+            self.teacher_q_values.append(-np.inf)
+        for i in active_tasks:
+            self.teacher_q_values[i] = 0
+            self.thompson_arrays[i].append(0)
+    def update_teacher_q_table(self, env_num, teacher_reward):
+        # self.teacher_q_values[env_num] = self.teacher_q_values[env_num] + self.alpha*(teacher_reward-self.teacher_q_values[env_num])
+        self.thompson_arrays[env_num].append(teacher_reward)
+        if len(self.thompson_arrays[env_num]) > 7:
+            self.thompson_arrays[env_num].pop(0)
+        if len(self.thompson_arrays[env_num]) == 2 and self.thompson_arrays[env_num][0] == 0:
+            self.thompson_arrays[env_num].pop(0)
+    def update_thompson_array(self, learned_task, active_tasks):
+        self.thompson_arrays[learned_task] = []
+        for task in active_tasks:
+            if len(self.thompson_arrays[task]) == 0:
+                self.thompson_arrays[task].append(0)
+    def choose_task(self, active_tasks):
+        thompson_to_consider = [self.thompson_arrays[i] for i in active_tasks]
+        sampled_thompson_to_consider = [np.random.choice(i) for i in thompson_to_consider]
+        maxIndices = [i for i in range(len(sampled_thompson_to_consider)) if sampled_thompson_to_consider[i] == np.asarray(sampled_thompson_to_consider).max()]
+        task_number = np.random.choice(maxIndices)
+        actual_task_number = 0
+        actual_task_number += task_number
+        task_to_check = 0
+        for i in range(len(self.thompson_arrays)):
+            if len(self.thompson_arrays[i]) == 0:
+                actual_task_number += 1
+            if len(self.thompson_arrays[i]) > 0:
+                if task_to_check == task_number:
+                    break
+                else:
+                    task_to_check += 1
+        if actual_task_number not in active_tasks:
+            print("task number {} not in active tasks {}".format(actual_task_number,active_tasks))
+            print("q values {}".format(self.teacher_q_values))
+            print(stop) 
+        return actual_task_number        
 
 if __name__ == '__main__':
 

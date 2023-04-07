@@ -15,14 +15,15 @@ def make_envs(params):
     env_list_names = params['training']['envs']
     max_ep_len = params['env']['max_ep_len']                   # max timesteps in one episode
     envs = []
-    for env in env_list_names:
+    for env_name in env_list_names:
         if params['env']['render_mode']:
-            env = gym.make(env, max_steps = max_ep_len, render_mode = "human")
+            env = gym.make(env_name, max_steps = max_ep_len, render_mode = "human")
             env = FullyObsWrapper(env)
             envs.append(env)
         else:
-            env = gym.make(env, max_steps = max_ep_len)
+            env = gym.make(env_name, max_steps = max_ep_len)
             env = FullyObsWrapper(env)
+            print("task is: ", env_name)
             envs.append(env)
     return envs
         
@@ -77,7 +78,7 @@ def train(params):
         if not os.path.exists(directory):
             os.makedirs(directory)
         random_seed = params['ppo']['random_seed']    # set random seed if required (0 = no random seed)
-        checkpoint_path = directory + "PPO_{}_{}_{}.pth".format(env_name, random_seed, run_num_pretrained+100)
+        checkpoint_path = directory + "PPO_{}_{}_{}.pth".format(env_name, random_seed, run_num_pretrained)
         checkpoint_path_list.append(checkpoint_path)
         print("save checkpoint path : " + checkpoint_path)
         #####################################################
@@ -142,99 +143,104 @@ def train(params):
     final_task_performance_reward = []
     final_task_performance_done = []
     average_timesteps_learned_tasks = [0 for _ in range(env_num)]
-    while True:
-        current_task = dfa_instance.choose_task()
-        # print("current task:", current_task)
-        env = envs[current_task]
-        # ppos[current_task] = ppos[current_task]
-        episodes_in_current_iter = 0
-        timesteps_in_current_iter = 0
-        # printing and logging variables
-        print_running_reward = 0
-        print_running_episodes = 0
 
-        log_running_reward = 0
-        log_running_episodes = 0
-        is_task_leared = False
-        done_arr = []
-        reward_arr = []
-        # training loop
-        while episodes_in_current_iter <= episodes_in_each_iter:
+    env = envs[0]
+    ppo_agent = ppos[0]
+    episodes_in_current_iter = 0
+    timesteps_in_current_iter = 0
+    # printing and logging variables
+    print_running_reward = 0
+    print_running_episodes = 0
 
-            state, info = env.reset()
-            current_ep_reward = 0
+    log_running_reward = 0
+    log_running_episodes = 0
+    is_task_leared = False
+    task_learned = False
+    done_arr = []
+    reward_arr = []
+    # training loop
+    while episodes_in_current_iter <= 5000000:
 
-            for t in range(1, max_ep_len+1):
+        state, info = env.reset()
+        current_ep_reward = 0
+        print_avg_reward = 0
 
-                # select action with policy
-                state['image'] = np.swapaxes(state['image'],0,2)
-                state['image'] = np.expand_dims(state['image'], axis=0)
-                action = ppos[current_task].select_action(state['image'])    
-                state, reward, terminated, truncated, info = env.step(action)
+        for t in range(1, max_ep_len+1):
 
-                # saving reward and is_terminals
-                ppos[current_task].buffer.rewards.append(reward)
+            # select action with policy
+            state['image'] = np.swapaxes(state['image'],0,2)
+            state['image'] = np.expand_dims(state['image'], axis=0)
+            action = ppo_agent.select_action(state['image'])    
+            state, reward, terminated, truncated, info = env.step(action)
 
-                current_ep_reward += reward
-                global_timestep += 1
-                timesteps_in_current_iter +=1
+            # saving reward and is_terminals
+            ppo_agent.buffer.rewards.append(reward)
+            if terminated or truncated:
+                ppo_agent.buffer.is_terminals.append(True)
+            else:
+                ppo_agent.buffer.is_terminals.append(False)
 
-                if terminated or truncated:
-                    ppos[current_task].buffer.is_terminals.append(True)
-                else:
-                    ppos[current_task].buffer.is_terminals.append(False)
+            current_ep_reward += reward
+            global_timestep += 1
+            timesteps_in_current_iter +=1
 
-                # update PPO agent
-                if episodes_in_current_iter+1 % update_episode == 0:
-                    ppos[current_task].update()
+            # update PPO agent
+            if episodes_in_current_iter+1 % update_episode == 0:
+                ppo_agent.update()
 
-                # if continuous action space; then decay action std of ouput action distribution
-                if has_continuous_action_space and timesteps_in_current_iter % action_std_decay_freq == 0:
-                    ppos[current_task].decay_action_std(action_std_decay_rate, min_action_std)
+            # if continuous action space; then decay action std of ouput action distribution
+            if has_continuous_action_space and timesteps_in_current_iter % action_std_decay_freq == 0:
+                ppo_agent.decay_action_std(action_std_decay_rate, min_action_std)
 
-                # printing average reward
-                if timesteps_in_current_iter % print_freq == 0:
+            # printing average reward
+            if timesteps_in_current_iter % print_freq == 0:
 
-                    print("Environment: {} \t\t Episode : {} \t\t Timestep : {} \t\t Average Reward : {}".format(current_task, environment_total_episode[current_task], environment_total_timestep[current_task]+timesteps_in_current_iter, np.mean(reward_arr[-50:])))
+                # print average reward till last episode
+                print_avg_reward = print_running_reward / print_running_episodes
+                print_avg_reward = round(print_avg_reward, 2)
 
-                # break; if the episode is over
-                if terminated and current_ep_reward > 0:
-                    done_arr.append(1)
-                    reward_arr.append(current_ep_reward)
-                    if current_task == env_num - 1:
-                        final_task_performance_reward.append(current_ep_reward)
-                        final_task_performance_done.append(1)
-                        final_task_performance_timesteps.append(environment_total_timestep[current_task]+timesteps_in_current_iter)
-                    break
-                elif terminated or truncated:
-                    done_arr.append(0)
-                    reward_arr.append(current_ep_reward)
-                    if current_task == env_num - 1:
-                        final_task_performance_reward.append(current_ep_reward)
-                        final_task_performance_done.append(0)
-                        final_task_performance_timesteps.append(environment_total_timestep[current_task]+timesteps_in_current_iter)
-                    break
+                print("Environment: {} \t\t Episode : {} \t\t Timestep : {} \t\t Average Reward : {}".format(1, episodes_in_current_iter, global_timestep, np.mean(reward_arr[-50:])))
+                print("Q-Values : {}".format(dfa_instance.qvalue.teacher_q_values))
 
-            if len(reward_arr) > 50 and np.mean(reward_arr[-50:]) > 0.9:
-                print("saving converged model at : " + checkpoint_path_list[current_task])
-                ppos[current_task].save(checkpoint_path_list[current_task])
-                is_final_task = dfa_instance.learned_task(current_task)
-                is_task_leared = True
-                average_timesteps_learned_tasks[current_task] = timesteps_in_current_iter/episodes_in_current_iter
+                print_running_reward = 0
+                print_running_episodes = 0
+
+            # save model weights
+            if timesteps_in_current_iter % save_model_freq == 0:
+                print("--------------------------------------------------------------------------------------------")
+                print("saving model at : " + checkpoint_path_list[1])
+                ppo_agent.save(checkpoint_path_list[1])
+                print("model saved")
+                print("Elapsed Time  : ", datetime.now().replace(microsecond=0) - start_time)
+                print("--------------------------------------------------------------------------------------------")
+
+            # break; if the episode is over
+            if terminated and current_ep_reward > 0:
+                done_arr.append(1)
+                reward_arr.append(current_ep_reward)
                 break
-            episodes_in_current_iter += 1
-            environment_total_episode[current_task] += 1
-            print_running_reward += current_ep_reward
-            print_running_episodes += 1
-            log_running_reward += current_ep_reward
-            log_running_episodes += 1
-        environment_total_timestep[current_task] += timesteps_in_current_iter
-        ppos[current_task].save(checkpoint_path_list[current_task])
-        ppos[current_task] = ppos[current_task]
-        print("done arr mean: ", np.mean(done_arr))
-        if not is_task_leared:
-            dfa_instance.update_teacher(current_task, np.mean(done_arr))
-        if is_final_task == 1:
+            elif terminated or truncated:
+                done_arr.append(0)
+                reward_arr.append(current_ep_reward)
+                break
+
+        if len(reward_arr) > 50 and np.mean(reward_arr[-50:]) > 0.9:
+            print("saving converged model at : " + checkpoint_path_list[1])
+            ppo_agent.save(checkpoint_path_list[1])
+            is_final_task = dfa_instance.learned_task(1)
+            is_task_leared = True
+            average_timesteps_learned_tasks[1] = timesteps_in_current_iter/episodes_in_current_iter
+            task_learned = True
+            break
+        episodes_in_current_iter += 1
+        environment_total_episode[1] += 1
+        print_running_reward += current_ep_reward
+        print_running_episodes += 1
+        log_running_reward += current_ep_reward
+        log_running_episodes += 1
+        environment_total_timestep[1] += timesteps_in_current_iter
+        # print("done arr mean: ", np.mean(done_arr))
+        if task_learned:
             break
         
     log_f.close()
@@ -274,6 +280,7 @@ def train(params):
     np.savez_compressed(path_to_save_avg_timesteps, average_timesteps_learned_tasks = average_timesteps_learned_tasks)
 
     print("Sunk timesteps: ", environment_total_timestep)
+    print("global timesteps: ", global_timestep)
     print("Sunk episodes: ", environment_total_episode)
     print("final episodes: ", len(final_task_performance_timesteps))
     print("avg timesteps learned tasks: ", average_timesteps_learned_tasks)

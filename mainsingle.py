@@ -1,8 +1,8 @@
 import os
 import yaml
 
-from train import train
-# from train_single import train
+# from train import train
+from train_single import train
 
 
 def read_one_block_of_yaml_data(filename):
