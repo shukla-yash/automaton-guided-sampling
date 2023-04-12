@@ -48,28 +48,8 @@ def train(params):
     #### log files for multiple runs are NOT overwritten
     checkpoint_path_list = []
     for env_name in env_list_names:
-        log_dir = "AGTS_logs"
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
-        log_dir = log_dir + '/' + env_name + '/'
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
-        #### get number of log files in log directory
-        run_num = 0
-        current_num_files = next(os.walk(log_dir))[2]
-        run_num = len(current_num_files)
-        #### create new log file for each run
-        log_f_name = log_dir + '/AGTS_' + sampling_strategy + "_log_" + str(run_num) + ".csv"
-        print("current logging run number for " + env_name + " : ", run_num)
-        print("logging at : " + log_f_name)
-        # logging file
-        log_f = open(log_f_name,"w+")
-        log_f.write('episode,timestep,reward\n')
-
-        #####################################################
         ################### checkpointing ###################
-        run_num_pretrained = 0      #### change this to prevent overwriting weights in same env_name folder
-
+        run_num_pretrained = params['training']['run_number']      #### change this to prevent overwriting weights in same env_name folder
         directory = "AGTS_Models"
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -124,7 +104,6 @@ def train(params):
 
     print("training environment name : " + env_name)
     print("============================================================================================")
-
     ################# training procedure ################
     # track total training time
     start_time = datetime.now().replace(microsecond=0)
@@ -132,7 +111,7 @@ def train(params):
 
     print("============================================================================================")
 
-    dfa_instance = DFA()
+    dfa_instance = DFA(strategy = sampling_strategy)
     global_timestep = 0
     environment_total_timestep = [0 for i in range(env_num)]
     environment_total_episode = [0 for i in range(env_num)]
@@ -150,7 +129,7 @@ def train(params):
         timesteps_in_current_iter = 0
         # printing and logging variables
         print_running_episodes = 0
-
+        timestep_per_episode_in_this_iter = []
         log_running_reward = 0
         log_running_episodes = 0
         is_task_leared = False
@@ -175,6 +154,7 @@ def train(params):
                 ppo_agent.buffer.rewards.append(reward)
                 if terminated or truncated:
                     ppo_agent.buffer.is_terminals.append(True)
+                    timestep_per_episode_in_this_iter.append(t)
                 else:
                     ppo_agent.buffer.is_terminals.append(False)
 
@@ -194,17 +174,6 @@ def train(params):
                 if timesteps_in_current_iter % print_freq == 0:
 
                     print("Environment: {} \t\t Episode : {} \t\t Timestep : {} \t\t Average Reward : {}".format(current_task, environment_total_episode[current_task], environment_total_timestep[current_task]+timesteps_in_current_iter, np.mean(reward_arr[-50:])))
-
-
-                    # # print average reward till last episode
-                    # print_avg_reward = print_running_reward / print_running_episodes
-                    # print_avg_reward = round(print_avg_reward, 2)
-
-                    # print("Environment: {} \t\t Episode : {} \t\t Timestep : {} \t\t Average Reward : {}".format(current_task, episodes_in_current_iter, environment_total_timestep[current_task]+timesteps_in_current_iter, np.mean(reward_arr[-50:])))
-                    # print("Q-Values : {}".format(dfa_instance.qvalue.teacher_q_values))
-
-                    # print_running_reward = 0
-                    # print_running_episodes = 0
 
                 # save model weights
                 if timesteps_in_current_iter % save_model_freq == 0:
@@ -238,6 +207,7 @@ def train(params):
                 ppo_agent.save(checkpoint_path_list[current_task])
                 is_final_task = dfa_instance.learned_task(current_task)
                 is_task_leared =True
+                average_timesteps_learned_tasks[current_task] = np.mean(timestep_per_episode_in_this_iter[-50:])
                 break
             episodes_in_current_iter += 1
             environment_total_episode[current_task] += 1
@@ -249,11 +219,9 @@ def train(params):
         print("done arr mean: ", np.mean(done_arr))
         if not is_task_leared:
             dfa_instance.update_teacher(current_task, np.mean(done_arr))        
-        # dfa_instance.update_teacher(current_task, np.mean(done_arr))
         if is_final_task == 1:
             break
         
-    log_f.close()
     env.close()
 
     # print total training time
@@ -264,30 +232,41 @@ def train(params):
     print("Total training time  : ", end_time - start_time)
     print("============================================================================================")
 
-    experiment_file_name_sunk_timesteps = 'randomseed_' + str(random_seed) + '_sunk_timesteps'
+    log_dir = "AGTS_"+str(sampling_strategy)
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    log_dir = log_dir + '/' + "seed=" + str(random_seed) + "num=" + str(run_num_pretrained) + '/'
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    experiment_file_name_sunk_timesteps = 'sunk_timesteps'
     path_to_save_sunk_timesteps = log_dir + os.sep + experiment_file_name_sunk_timesteps + '.npz'
 
-    experiment_file_name_sunk_episodes = 'randomseed_' + str(random_seed) + '_sunk_episodes'
+    experiment_file_name_sunk_episodes = 'sunk_episodes'
     path_to_save_sunk_episodes = log_dir + os.sep + experiment_file_name_sunk_episodes + '.npz'
 
-    experiment_file_name_final_reward = 'randomseed_' + str(random_seed) + '_final_reward'
+    experiment_file_name_final_reward = 'final_reward'
     path_to_save_final_reward = log_dir + os.sep + experiment_file_name_final_reward + '.npz'
 
-    experiment_file_name_final_dones = 'randomseed_' + str(random_seed) + '_final_dones'
+    experiment_file_name_final_dones = 'final_dones'
     path_to_save_final_dones = log_dir + os.sep + experiment_file_name_final_dones + '.npz'
 
-    experiment_file_name_final_timesteps = 'randomseed_' + str(random_seed) + '_final_timesteps'
+    experiment_file_name_final_timesteps = 'final_timesteps'
     path_to_save_final_timesteps = log_dir + os.sep + experiment_file_name_final_timesteps + '.npz'
+
+    experiment_file_name_avg_timesteps_learned_tasks = 'avg_timesteps_learned_tasks'
+    path_to_save_avg_timesteps_learned_tasks = log_dir + os.sep + experiment_file_name_avg_timesteps_learned_tasks + '.npz'
 
     np.savez_compressed(path_to_save_sunk_timesteps, sunk_timesteps = environment_total_timestep)
     np.savez_compressed(path_to_save_sunk_episodes, sunk_episodes = environment_total_episode)    
     np.savez_compressed(path_to_save_final_reward, final_reward = final_task_performance_reward)
     np.savez_compressed(path_to_save_final_dones, final_dones = final_task_performance_done)
     np.savez_compressed(path_to_save_final_timesteps, final_timesteps = final_task_performance_timesteps)
+    np.savez_compressed(path_to_save_avg_timesteps_learned_tasks, avg_timesteps_learned_tasks = average_timesteps_learned_tasks)
 
     print("Sunk timesteps: ", environment_total_timestep)
     print("Sunk episodes: ", environment_total_episode)
     print("final episodes: ", len(final_task_performance_timesteps))
+    print("average timesteps per task when task was learned: ", average_timesteps_learned_tasks)
 
 
 

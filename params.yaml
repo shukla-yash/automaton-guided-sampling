@@ -1,8 +1,9 @@
 training:
   num_envs : 5
   envs : ["MiniGrid-NineRoomsEasyKey-v0", "MiniGrid-NineRoomsHardKey-v0", "MiniGrid-NineRoomsKeyEasyDoor-v0", "MiniGrid-NineRoomsKeyHardDoor-v0", "MiniGrid-NineRoomsDoorGoal-v0"]
-  strategy: q-value # q-value|thompson|entropy
+  strategy: "q-value" # q-value|thompson|entropy
   episodes_in_each_iter : 200
+  run_number: 0
 
 env:
   render_mode : False
