@@ -19,6 +19,8 @@ class DFA:
     def learned_task(self, task):
         if task == self.goal_task:
             # print("Learned goal task")
+            print("Learned tasks:",self.learned_tasks)
+            print("Discarded tasks:",self.discarded_tasks)            
             return 1
         # print("edges: ", self.edges)
         # print("task  to remove: ", task)
@@ -113,7 +115,8 @@ class QValue:
         if np.random.uniform() < self.exploration:
             task_number = np.random.choice(active_tasks)
         else:
-            task_number = np.argmax(self.teacher_q_values)
+            maxIndices = [i for i in range(len(self.teacher_q_values)) if self.teacher_q_values[i] == np.asarray(self.teacher_q_values).max()]
+            task_number = np.random.choice(maxIndices)
         if task_number not in active_tasks:
             print("task number {} not in active tasks {}".format(task_number,active_tasks))
             print("q values {}".format(self.teacher_q_values))

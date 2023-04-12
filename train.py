@@ -141,7 +141,7 @@ def train(params):
     final_task_performance_timesteps = []
     final_task_performance_reward = []
     final_task_performance_done = []
-
+    average_timesteps_learned_tasks = [0 for _ in range(env_num)]
     while True:
         current_task = dfa_instance.choose_task()
         env = envs[current_task]
@@ -149,12 +149,11 @@ def train(params):
         episodes_in_current_iter = 0
         timesteps_in_current_iter = 0
         # printing and logging variables
-        print_running_reward = 0
         print_running_episodes = 0
 
         log_running_reward = 0
         log_running_episodes = 0
-
+        is_task_leared = False
         done_arr = []
         reward_arr = []
         # training loop
@@ -194,15 +193,18 @@ def train(params):
                 # printing average reward
                 if timesteps_in_current_iter % print_freq == 0:
 
-                    # print average reward till last episode
-                    print_avg_reward = print_running_reward / print_running_episodes
-                    print_avg_reward = round(print_avg_reward, 2)
+                    print("Environment: {} \t\t Episode : {} \t\t Timestep : {} \t\t Average Reward : {}".format(current_task, environment_total_episode[current_task], environment_total_timestep[current_task]+timesteps_in_current_iter, np.mean(reward_arr[-50:])))
 
-                    print("Environment: {} \t\t Episode : {} \t\t Timestep : {} \t\t Average Reward : {}".format(current_task, episodes_in_current_iter, environment_total_timestep[current_task]+timesteps_in_current_iter, np.mean(reward_arr[-50:])))
-                    print("Q-Values : {}".format(dfa_instance.qvalue.teacher_q_values))
 
-                    print_running_reward = 0
-                    print_running_episodes = 0
+                    # # print average reward till last episode
+                    # print_avg_reward = print_running_reward / print_running_episodes
+                    # print_avg_reward = round(print_avg_reward, 2)
+
+                    # print("Environment: {} \t\t Episode : {} \t\t Timestep : {} \t\t Average Reward : {}".format(current_task, episodes_in_current_iter, environment_total_timestep[current_task]+timesteps_in_current_iter, np.mean(reward_arr[-50:])))
+                    # print("Q-Values : {}".format(dfa_instance.qvalue.teacher_q_values))
+
+                    # print_running_reward = 0
+                    # print_running_episodes = 0
 
                 # save model weights
                 if timesteps_in_current_iter % save_model_freq == 0:
@@ -225,22 +227,29 @@ def train(params):
                 elif terminated or truncated:
                     done_arr.append(0)
                     reward_arr.append(current_ep_reward)
+                    if current_task == env_num - 1:
+                        final_task_performance_reward.append(current_ep_reward)
+                        final_task_performance_done.append(0)
+                        final_task_performance_timesteps.append(environment_total_timestep[current_task]+timesteps_in_current_iter)
+                    break                    
 
             if len(reward_arr) > 50 and np.mean(reward_arr[-50:]) > 0.9:
                 print("saving converged model at : " + checkpoint_path_list[current_task])
                 ppo_agent.save(checkpoint_path_list[current_task])
                 is_final_task = dfa_instance.learned_task(current_task)
+                is_task_leared =True
                 break
             episodes_in_current_iter += 1
-            environment_total_timestep[current_task] += timesteps_in_current_iter
             environment_total_episode[current_task] += 1
-            print_running_reward += current_ep_reward
-            print_running_episodes += 1
-
+            # print_running_episodes += 1
             log_running_reward += current_ep_reward
             log_running_episodes += 1
+
+        environment_total_timestep[current_task] += timesteps_in_current_iter
         print("done arr mean: ", np.mean(done_arr))
-        dfa_instance.update_teacher(current_task, np.mean(done_arr))
+        if not is_task_leared:
+            dfa_instance.update_teacher(current_task, np.mean(done_arr))        
+        # dfa_instance.update_teacher(current_task, np.mean(done_arr))
         if is_final_task == 1:
             break
         
